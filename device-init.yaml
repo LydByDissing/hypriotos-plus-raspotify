@@ -1,0 +1,6 @@
+hostname: pi-connect
+wifi:
+  interfaces:
+    wlan0:
+      ssid: "MyNetwork"
+      password: "secret_password"
