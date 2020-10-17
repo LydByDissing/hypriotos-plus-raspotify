@@ -1,0 +1,83 @@
+#cloud-config
+# vim: syntax=yaml
+#
+
+# The current version of cloud-init in the Hypriot rpi-64 is 0.7.9
+# When dealing with cloud-init, it is SUPER important to know the version
+# I have wasted many hours creating servers to find out the module I was trying to use wasn't in the cloud-init version I had
+# Documentation: http://cloudinit.readthedocs.io/en/0.7.9/index.html
+
+# Set your hostname here, the manage_etc_hosts will update the hosts file entries as well
+hostname: pi-connect
+manage_etc_hosts: true
+
+# This expands the root volume to the entire SD Card, similar to what the raspbian images did on first boot.
+# This doesn't seem to be required, its more here for posterity in understanding what is going on
+resize_rootfs: true
+growpart:
+    mode: auto
+    devices: ["/"]
+    ignore_growroot_disabled: false
+
+# You could modify this for your own user information
+users:
+  - name: pi
+    gecos: "Hypriot Pirate"
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: users,docker,video
+    plain_text_passwd: connect
+    lock_passwd: false
+    ssh_pwauth: true
+    chpasswd: { expire: false }
+
+# Update our packages on first boot, saves us some time
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+
+# Install any additional packages you need here
+# I add ntp because.. without it, rpi is useless in keeping track of time.
+packages:
+  - ntp
+
+# Set the locale of the system
+locale: "en_DK.UTF-8"
+
+# Set the timezone
+# Value of 'timezone' must exist in /usr/share/zoneinfo
+timezone: "Europa/Copenhagen"
+
+# Tell docker to tag this node appropriately
+# Currently we need the experimental?
+write_files:
+    - path: "/etc/docker/daemon.json"
+      owner: "root:root"
+      content: |
+        {
+          "labels": [ "os=linux", "arch=arm64" ],
+          "experimental": true
+        }
+    - path: "/etc/systemd/system/docker.service.d/10-remote-api.conf"
+      owner: "root:root"
+      content: |
+        [Service]
+        ExecStart=
+        ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2376
+# These commands will be ran once on first boot only
+runcmd:
+  - [ systemctl, daemon-reload ]
+  # Pickup the hostname changes
+  - [ systemctl, restart, avahi-daemon ]
+  # Pickup the daemon.json changes
+  - [ systemctl, restart, docker ]
+  # Run raspotify
+  - [
+      docker, run
+      "--detach",
+      "--name", "raspotify",
+      "--network", "host",
+      "--device /dev/snd",
+      "--restart", "always",
+      "dissing/raspotify"
+    ]
